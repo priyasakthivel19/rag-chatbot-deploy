@@ -1,0 +1,86 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Document Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e1020;--side:#141729;--card:#1a1e33;--line:#272c47;--ink:#e9ebf8;--mute:#8d93b2;--acc:#7b6cf6;--err:#ff8a8a}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;font:15px/1.6 "Plus Jakarta Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+button,input{font:inherit;color:inherit}button{cursor:pointer}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.pri{background:var(--acc);border:0;border-radius:10px;padding:12px 16px;font-weight:700;color:#fff}.pri:disabled{opacity:.5}
+.ghost{background:none;border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink)}.ghost:hover{border-color:var(--acc)}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#7b6cf6,#4fb3ff);display:grid;place-items:center;font-weight:700;color:#fff}
+/* login */
+#auth{min-height:100vh;display:grid;place-items:center;padding:20px}
+.box{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:14px}
+.box h1{margin:6px 0 0;font-size:1.5rem}.box p{margin:0;color:var(--mute)}
+.tabs{display:flex;background:var(--bg);border-radius:10px;padding:4px}.tabs button{flex:1;border:0;background:none;padding:8px;border-radius:8px;color:var(--mute);font-weight:500}
+.tabs .on{background:var(--card);color:var(--ink)}#err{color:var(--err);min-height:1.4em;font-size:.9rem}
+/* app */
+#app{display:grid;grid-template-columns:300px 1fr;height:100vh}
+aside{background:var(--side);border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto}
+.brand{display:flex;gap:10px;align-items:center;font-weight:700;font-size:1.1rem}
+.me{display:flex;gap:10px;align-items:center;background:var(--card);border-radius:12px;padding:10px}
+.av{width:34px;height:34px;border-radius:50%;background:var(--acc);display:grid;place-items:center;font-weight:700}
+.me b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px}.me small{color:var(--mute)}
+#drop{border:2px dashed var(--line);border-radius:14px;padding:20px 12px;text-align:center;color:var(--mute);cursor:pointer}
+#drop.over,#drop:hover{border-color:var(--acc);color:var(--ink)}#drop b{color:var(--ink);display:block}
+#names{font-size:.85rem;color:var(--mute);word-break:break-all}.sp{flex:1}
+main{display:flex;flex-direction:column;min-width:0}
+header{padding:16px 24px;border-bottom:1px solid var(--line)}header h2{margin:0;font-size:1.1rem}header small{color:var(--mute)}
+#log{flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:14px}
+.m{max-width:min(720px,88%);padding:11px 15px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+.u{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:4px}
+.b{background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.m code{background:var(--bg);padding:1px 6px;border-radius:5px}
+.pill{display:inline-block;margin-top:8px;padding:2px 10px;border-radius:99px;font-size:.78rem;background:var(--bg);color:var(--mute)}
+.empty{margin:auto;text-align:center;color:var(--mute);max-width:420px}.empty h3{color:var(--ink);margin:10px 0 6px}
+.chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}.chips button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 14px}
+.dots span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:var(--mute);animation:d 1s infinite}.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes d{50%{transform:translateY(-4px);opacity:.4}}
+.bar{padding:14px 24px 20px;display:flex;gap:10px}.bar input{border-radius:99px;padding:13px 20px}.bar button{border-radius:99px;padding:0 24px}
+@media(max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto;min-height:100vh}aside{border-right:0;border-bottom:1px solid var(--line)}main{height:80vh}}
+@media(prefers-reduced-motion:reduce){.dots span{animation:none}}
+</style></head><body>
+<div id="auth"><div class="box">
+<div class="logo">D</div><h1>Document Chat</h1><p>Chat with your own PDF, Word and Excel files.</p>
+<div class="tabs"><button id="t1" class="on" onclick="mode('login')">Log in</button><button id="t2" onclick="mode('register')">Create account</button></div>
+<input id="un" placeholder="Username or email" autocomplete="username"><input id="pw" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" onkeydown="if(event.key=='Enter')go()">
+<button id="gb" class="pri" onclick="go()">Log in</button><div id="err"></div></div></div>
+<div id="app" hidden>
+<aside><div class="brand"><div class="logo">D</div>Document Chat</div>
+<div class="me"><div class="av" id="av"></div><div><b id="who"></b><small id="cnt"></small></div></div>
+<div id="drop" onclick="$('f').click()"><b>Drop files here</b>or click to choose<br><small>PDF, DOCX, XLSX, CSV, TXT</small></div>
+<input id="f" type="file" multiple hidden accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xlsm" onchange="pick()">
+<div id="names"></div><button id="ub" class="pri" onclick="up()">Upload and index</button>
+<div class="sp"></div><button class="ghost" onclick="clr()">Delete my documents</button><button class="ghost" onclick="out()">Log out</button></aside>
+<main><header><h2>Chat</h2><small id="sub">Only you can see your documents</small></header>
+<div id="log"></div>
+<div class="bar"><input id="q" placeholder="Ask about your documents or anything else" onkeydown="if(event.key=='Enter')send()"><button id="sb" class="pri" onclick="send()">Send</button></div></main></div>
+<script>
+const $=i=>document.getElementById(i);let T=localStorage.t||"",H=[],M="login",FILES=[];
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const md=s=>esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>");
+async function api(p,o={}){o.headers={...(o.headers||{}),Authorization:"Bearer "+T};const r=await fetch("/api/"+p,o);const d=await r.json().catch(()=>({}));
+ if(r.status==401&&T)out();if(!r.ok)throw new Error(typeof d.detail=="string"?d.detail:"Request failed ("+r.status+")");return d}
+function mode(m){M=m;$("t1").className=m=="login"?"on":"";$("t2").className=m=="login"?"":"on";$("gb").textContent=m=="login"?"Log in":"Create account";$("err").textContent=""}
+function show(){$("auth").hidden=!!T;$("app").hidden=!T;if(T){stat();if(!$("log").children.length)empty()}}
+async function go(){$("err").textContent="";$("gb").disabled=true;try{const d=await api(M,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("un").value,password:$("pw").value})});T=localStorage.t=d.token;show()}catch(e){$("err").textContent=e.message}$("gb").disabled=false}
+function out(){T="";localStorage.removeItem("t");H=[];$("log").innerHTML="";show()}
+async function stat(){try{const d=await api("status");$("who").textContent=d.username;$("av").textContent=d.username[0].toUpperCase();$("cnt").textContent=d.chunks+" chunks indexed"}catch(e){}}
+function empty(){$("log").innerHTML='<div class="empty"><div class="logo" style="margin:auto">D</div><h3>Ask anything about your files</h3>Upload a document on the left, then ask a question.<div class="chips"><button onclick="ask(this)">Summarize my documents</button><button onclick="ask(this)">What are the key points?</button></div></div>'}
+function ask(b){$("q").value=b.textContent;send()}
+function add(c,t,x){const e=$("log").querySelector(".empty");if(e)e.remove();const d=document.createElement("div");d.className="m "+c;d.innerHTML=t;if(x){const s=document.createElement("span");s.className="pill";s.textContent=x;d.appendChild(document.createElement("br"));d.appendChild(s)}$("log").appendChild(d);d.scrollIntoView({block:"end"});return d}
+function pick(){FILES=[...$("f").files];$("names").textContent=FILES.map(f=>f.name).join(", ")}
+const dz=$("drop");["dragover","dragenter"].forEach(e=>dz.addEventListener(e,x=>{x.preventDefault();dz.classList.add("over")}));["dragleave","drop"].forEach(e=>dz.addEventListener(e,x=>{x.preventDefault();dz.classList.remove("over")}));
+dz.addEventListener("drop",x=>{FILES=[...x.dataTransfer.files];$("names").textContent=FILES.map(f=>f.name).join(", ")});
+async function up(){if(!FILES.length)return add("b","Choose one or more files first.");const fd=new FormData();FILES.forEach(f=>fd.append("files",f));
+ $("ub").disabled=true;$("ub").textContent="Indexing...";try{const d=await api("upload",{method:"POST",body:fd});add("b","Indexed <b>"+d.chunks+"</b> chunks from "+FILES.length+" file(s). Ask me anything!");FILES=[];$("f").value="";$("names").textContent="";stat()}catch(e){add("b","Upload failed: "+esc(e.message))}$("ub").disabled=false;$("ub").textContent="Upload and index"}
+async function clr(){if(!confirm("Delete all your indexed documents?"))return;await api("clear",{method:"DELETE"});add("b","Your documents were deleted.");stat()}
+async function send(){const m=$("q").value.trim();if(!m)return;$("q").value="";add("u",esc(m));$("sb").disabled=true;const w=add("b",'<span class="dots"><span></span><span></span><span></span></span>');
+ try{const d=await api("chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,history:H})});w.remove();
+  add("b",md(d.answer),d.source=="documents"?"From: "+d.refs.join(", "):"General knowledge");H.push({role:"user",content:m},{role:"assistant",content:d.answer})}
+ catch(e){w.textContent=e.message}$("sb").disabled=false;$("q").focus()}
+show();
+</script></body></html>

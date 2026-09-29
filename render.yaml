@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: rag-chatbot-deploy
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        value: rag-chatbot
+      - key: PINECONE_REGION
+        value: us-east-1
+      - key: CHAT_MODEL
+        value: openai/gpt-oss-120b
+      - key: JWT_SECRET
+        generateValue: true
