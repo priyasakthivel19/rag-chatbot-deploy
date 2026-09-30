@@ -1,11 +1,12 @@
+
 import os, io, re, time, hmac, hashlib, secrets, requests, jwt
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from pinecone import Pinecone, ServerlessSpec
 from groq import Groq
-
+ 
 load_dotenv()
 E = os.getenv
 INDEX_NAME = E("PINECONE_INDEX", "rag-chatbot")
@@ -14,8 +15,13 @@ EMB_MODEL, DIM = "gemini-embedding-001", 768
 SECRET = E("JWT_SECRET", "change-me")
 MIN_SCORE = float(E("MIN_SCORE", "0.5"))  # lower = use documents more often
 app = FastAPI()
+ 
+@app.exception_handler(Exception)
+async def show_error(request, exc):
+    print("SERVER ERROR:", repr(exc))
+    return JSONResponse({"detail": f"{type(exc).__name__}: {str(exc)[:250]}"}, status_code=500)
 _index = None
-
+ 
 def index():
     """Connect to Pinecone; create the index the first time."""
     global _index
@@ -28,19 +34,25 @@ def index():
             time.sleep(1)
         _index = pc.Index(INDEX_NAME)
     return _index
-
+ 
 def embed(texts, task):
     out = []
     for i in range(0, len(texts), 100):
         reqs = [{"model": f"models/{EMB_MODEL}", "content": {"parts": [{"text": t}]},
                  "taskType": task, "outputDimensionality": DIM} for t in texts[i:i + 100]]
-        r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{EMB_MODEL}:batchEmbedContents",
-                          headers={"x-goog-api-key": E("GEMINI_API_KEY", "")}, json={"requests": reqs}, timeout=60)
+        try:
+            r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{EMB_MODEL}:batchEmbedContents",
+                              headers={"x-goog-api-key": E("GEMINI_API_KEY", "")}, json={"requests": reqs}, timeout=60)
+        except requests.RequestException as e:
+            raise HTTPException(502, f"Cannot reach Gemini ({type(e).__name__}). Check your internet/DNS.")
         if r.status_code != 200:
-            raise HTTPException(502, f"Gemini embedding error: {r.text[:200]}")
-        out += [e["values"] for e in r.json()["embeddings"]]
+            raise HTTPException(502, f"Gemini embedding error {r.status_code}: {r.text[:200]}")
+        emb = r.json().get("embeddings")
+        if not emb:
+            raise HTTPException(502, f"Gemini returned no embeddings: {r.text[:200]}")
+        out += [e["values"] for e in emb]
     return out
-
+ 
 def parse(name, data):
     ext = name.lower().rsplit(".", 1)[-1]
     if ext == "pdf":
@@ -65,31 +77,31 @@ def parse(name, data):
                     lines.append(f"[{ws.title}] " + "; ".join(cells))
         return "\n".join(lines)
     return data.decode("utf-8", "ignore")  # txt, md, csv
-
+ 
 def chunk(text, size=350, ov=60):
     w = text.split()
     return [" ".join(w[i:i + size]) for i in range(0, len(w), size - ov) if w[i:i + size]]
-
+ 
 # ---------- accounts (stored in Pinecone, namespace "users", so they survive restarts) ----------
 class Cred(BaseModel):
     username: str
     password: str
-
+ 
 def hpw(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), 200000).hex()
-
+ 
 def token(u):
     return jwt.encode({"sub": u, "exp": int(time.time()) + 7 * 86400}, SECRET, "HS256")
-
+ 
 def find_user(u):
     return index().fetch(ids=["user:" + u], namespace="users").vectors.get("user:" + u)
-
+ 
 def user(authorization: str = Header("")):
     try:
         return jwt.decode(authorization.replace("Bearer ", ""), SECRET, ["HS256"])["sub"]
     except Exception:
         raise HTTPException(401, "Please log in again")
-
+ 
 @app.post("/api/register")
 def register(c: Cred):
     u = c.username.strip().lower()
@@ -101,7 +113,7 @@ def register(c: Cred):
     index().upsert(vectors=[{"id": "user:" + u, "values": [1.0] + [0.0] * (DIM - 1),
                              "metadata": {"salt": salt, "pw": hpw(c.password, salt)}}], namespace="users")
     return {"token": token(u), "username": u}
-
+ 
 @app.post("/api/login")
 def login(c: Cred):
     u = c.username.strip().lower()
@@ -109,11 +121,11 @@ def login(c: Cred):
     if not rec or not hmac.compare_digest(rec.metadata["pw"], hpw(c.password, rec.metadata["salt"])):
         raise HTTPException(401, "Wrong username or password")
     return {"token": token(u), "username": u}
-
+ 
 # ---------- documents + chat (each user has a private Pinecone namespace) ----------
 def ns(u):
     return "u_" + hashlib.sha1(u.encode()).hexdigest()[:20]
-
+ 
 @app.post("/api/upload")
 def upload(files: list[UploadFile] = File(...), u: str = Depends(user)):
     total = 0
@@ -131,12 +143,12 @@ def upload(files: list[UploadFile] = File(...), u: str = Depends(user)):
             index().upsert(vectors=items[i:i + 100], namespace=ns(u))
         total += len(items)
     return {"chunks": total}
-
+ 
 @app.get("/api/status")
 def status(u: str = Depends(user)):
     s = index().describe_index_stats().namespaces.get(ns(u))
     return {"username": u, "chunks": s.vector_count if s else 0}
-
+ 
 @app.delete("/api/clear")
 def clear(u: str = Depends(user)):
     try:
@@ -144,11 +156,11 @@ def clear(u: str = Depends(user)):
     except Exception:
         pass
     return {"ok": True}
-
+ 
 class Chat(BaseModel):
     message: str
     history: list[dict] = []
-
+ 
 @app.post("/api/chat")
 def chat(c: Chat, u: str = Depends(user)):
     q = embed([c.message], "RETRIEVAL_QUERY")[0]
@@ -169,7 +181,8 @@ def chat(c: Chat, u: str = Depends(user)):
     return {"answer": r.choices[0].message.content,
             "source": "documents" if hits else "general knowledge",
             "refs": sorted({m.metadata["source"] for m in hits})}
-
+ 
 @app.get("/", response_class=HTMLResponse)
 def home():
     return open(os.path.join(os.path.dirname(__file__), "index.html"), encoding="utf-8").read()
+ 
